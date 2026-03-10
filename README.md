@@ -2,17 +2,6 @@
 
 Firefox `moz-*` web components, extracted and transformed for use outside Firefox.
 
-[![npm](https://img.shields.io/npm/v/acorn-web)](https://www.npmjs.com/package/acorn-web)
-[![License: MPL-2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
-
----
-
-## Installation
-
-```bash
-npm install acorn-web
-```
-
 ---
 
 ## Usage
