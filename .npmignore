@@ -1,0 +1,13 @@
+src/
+target/
+.storybook/
+storybook-static/
+node_modules/
+.github/
+CLAUDE.md
+debug/
+.vscode/
+firefox/
+config.toml
+Cargo.toml
+Cargo.lock

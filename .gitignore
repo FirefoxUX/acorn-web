@@ -1,0 +1,8 @@
+debug/
+target/
+**/*.rs.bk
+.DS_Store
+firefox/
+node_modules/
+.vscode/
+storybook-static/
