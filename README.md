@@ -2,7 +2,6 @@
 
 Firefox `moz-*` web components, extracted and transformed for use outside Firefox.
 
----
 
 ## Usage
 
@@ -49,37 +48,13 @@ import 'acorn-web/styles/common-shared.css';
 
 ### Localization
 
-All localizable elements include `data-l10n-id` attributes with English fallback values baked in. This means:
-
 - **English (default)**: Components work out of the box — aria-labels, titles, and alt text are all present.
 - **Fluent (optional)**: Install `@fluent/bundle` and `@fluent/dom`, then call `initFluent()`. All `data-l10n-id` elements translate automatically. FTL files ship at `dist/locales/en-US/`.
 - **Custom i18n**: Set up your own `document.l10n` implementation, or set attributes (`title`, `aria-label`, `alt`) directly on component host elements.
 
-```js
-// Optional — only needed for non-English locales
-import { initFluent } from 'acorn-web/fluent-setup';
-await initFluent({ locale: 'fr' });
-```
-
 ### Vite
 
 No special configuration required — acorn-web ships ES modules. Assets (icons, images) are at `dist/assets/` and referenced via relative URLs inside the package.
-
----
-
-## Using Stories in Your Storybook
-
-acorn-web ships `.stories.mjs` files co-located with each component inside `dist/`. To load them in your own Storybook:
-
-```js
-// .storybook/main.js
-export default {
-  stories: [
-    './src/**/*.stories.js',
-    './node_modules/acorn-web/dist/components/**/*.stories.mjs',
-  ],
-};
-```
 
 ---
 
