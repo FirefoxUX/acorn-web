@@ -1,13 +1,11 @@
 //! Transforms and writes all files from the dependency graph to the output directory.
 //! Handles JS, CSS, SVG, markdown, and opaque files with type-specific transformations.
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use crate::dependency_graph::{DependencyGraph, FileType, TargetLocation};
 use crate::errors::{Error, Result};
 use crate::pipeline::dependency_walker::build_css_replacements;
-use crate::pipeline::fluent::FtlMap;
 use crate::pipeline::svg::transform_svg_context_fill;
 use crate::utils::file_utils;
 use crate::transform;
@@ -15,7 +13,7 @@ use crate::transform;
 /// Iterates all non-omitted files in the dependency graph, applies type-specific
 /// transformations (JS import rewriting, CSS URL replacement, SVG context-fill, markdown
 /// MDX conversion), and writes each to its output path under `output_dir`.
-pub fn transform_and_write_files(dep_graph: &mut DependencyGraph, output_dir: &Path, ftl_map: &FtlMap, fluent_fallbacks: &HashMap<String, String>) -> Result<()> {
+pub fn transform_and_write_files(dep_graph: &mut DependencyGraph, output_dir: &Path) -> Result<()> {
     // Build a global chrome:// URL -> dist path map for replacing URLs that aren't
     // direct dependencies of the file being transformed (e.g., chrome:// URLs in
     // story templates that reference assets from other components).
@@ -68,8 +66,6 @@ pub fn transform_and_write_files(dep_graph: &mut DependencyGraph, output_dir: &P
                     &file.path,
                     &relative_imports,
                     css_replacements.as_ref(),
-                    ftl_map,
-                    fluent_fallbacks,
                 )
                 .map_err(|e| {
                     Error::Custom(format!(

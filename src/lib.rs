@@ -1,7 +1,6 @@
-//! Top-level pipeline orchestrator. Wires together JAR resolution, dependency graphing,
+//! Top-level pipeline orchestrator. Wires together chrome-map resolution, dependency graphing,
 //! file transformation, and code generation into a single `transform_lib` entry point.
 
-use std::collections::HashMap;
 use std::path::Path;
 
 mod dependencies;
@@ -13,25 +12,24 @@ mod utils;
 
 use dependency_graph::DependencyGraph;
 use errors::{Error, Result};
-use utils::{file_utils, jar_resolver};
+use utils::file_utils;
 
 /// Runs the full extraction pipeline: resolves chrome:// URLs, discovers components,
 /// builds the dependency graph, transforms all files, and writes output to `output_path`.
 pub fn transform_lib(
     firefox_root: &Path,
     output_path: &str,
-    jar_paths: &[String],
-    mozbuild_paths: &[String],
+    chrome_map_path: &Path,
     global_stylesheets: &[String],
     component_paths: &[String],
     docs_paths: &[String],
-    fluent_fallbacks: &HashMap<String, String>,
 ) -> Result<()> {
-    // Parse JAR mappings for chrome:// URL resolution
-    let jr = jar_resolver::JarResolver::new(firefox_root, jar_paths, mozbuild_paths, None)
-        .map_err(|e| Error::Custom(format!("Failed to parse JAR mappings: {e}")))?;
+    // Load chrome-map.json for chrome:// / resource:// URL resolution
+    let resolver =
+        utils::chrome_map_resolver::ChromeMapResolver::new(firefox_root, chrome_map_path)
+            .map_err(|e| Error::Custom(format!("Failed to load chrome-map.json: {e}")))?;
 
-    let pf = utils::path_finder::PathFinder::new(jr);
+    let pf = utils::path_finder::PathFinder::new(resolver);
 
     let output_dir = Path::new(output_path);
 
@@ -70,10 +68,6 @@ pub fn transform_lib(
     let ftl_files: Vec<String> = ftl_references.into_iter().collect();
     pipeline::fluent::extract_ftl_files(firefox_root, output_dir, &ftl_files)?;
 
-    // Parse FTL files into a map for injecting English fallback attributes
-    eprintln!("Parsing FTL files for English fallbacks...");
-    let ftl_map = pipeline::fluent::parse_ftl_map(&ftl_files, firefox_root);
-
     // Generate the optional fluent-setup.mjs for advanced locale customization
     eprintln!("Generating fluent-setup module...");
     pipeline::codegen::generate_fluent_setup(output_dir, &ftl_files)?;
@@ -84,7 +78,7 @@ pub fn transform_lib(
 
     // Transform and write all files
     eprintln!("Transforming and writing files...");
-    pipeline::writer::transform_and_write_files(&mut dep_graph, output_dir, &ftl_map, fluent_fallbacks)?;
+    pipeline::writer::transform_and_write_files(&mut dep_graph, output_dir)?;
 
     // Process and write documentation files (.stories.md -> .stories.mdx)
     eprintln!("Processing documentation files...");

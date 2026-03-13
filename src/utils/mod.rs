@@ -1,6 +1,6 @@
-//! Shared utilities: URL resolution, file operations, JAR manifest parsing, and path finding.
+//! Shared utilities: URL resolution, file operations, chrome-map resolution, and path finding.
 
+pub mod chrome_map_resolver;
 pub mod file_utils;
-pub mod jar_resolver;
 pub mod path_finder;
 pub mod url;

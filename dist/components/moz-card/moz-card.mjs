@@ -202,7 +202,7 @@ summary {
 
 #heading {
   font-size: var(--font-size-root);
-  font-weight: var(--heading-font-weight);
+  font-weight: var(--font-weight-heading);
 }
 
 #content {

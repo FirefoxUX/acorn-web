@@ -1,15 +1,4 @@
-jar_paths = [
-    "toolkit/content/jar.mn",
-    "browser/base/jar.mn",
-    "toolkit/themes/osx/global/jar.mn",
-    "toolkit/themes/osx/mozapps/jar.mn",
-    "browser/themes/osx/jar.mn",
-    "browser/components/preferences/jar.mn",
-    "browser/components/profiles/jar.mn",
-]
-mozbuild_paths = [
-    "layout/style/moz.build",
-]
+chrome_map_path = "obj-aarch64-apple-darwin24.6.0/chrome-map.json"
 component_paths = [
     "toolkit/content/widgets/moz-*/**/*",
     "toolkit/themes/shared/design-system/storybook/*",
@@ -21,10 +10,3 @@ globals_stylesheets = [
 docs_paths = [
     "browser/components/storybook/docs/*.stories.md",
 ]
-
-[fluent_fallbacks]
-# JS template expressions injected as attribute fallbacks for dynamic l10n entries
-# that use Fluent variables (data-l10n-args). These can't be auto-generated from FTL.
-# Key: l10n-id from the FTL file. Value: JS expression (inserted as title=${...}).
-"moz-five-star-rating" = '${starsTitle ?? `Rated ${rating.toLocaleString(undefined, { maximumFractionDigits: 1 })} out of 5`}'
-"moz-five-star-rating-rate-text" = '${ifDefined(selectable ? `Rate ${ratingValue.toLocaleString(undefined, { maximumFractionDigits: 1 })} out of 5` : undefined)}'

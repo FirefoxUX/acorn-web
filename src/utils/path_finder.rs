@@ -1,7 +1,7 @@
 //! Resolves import strings (`chrome://`, `resource://`, relative paths) to absolute
-//! filesystem paths using the JAR resolver for internal URLs.
+//! filesystem paths using the chrome-map resolver for internal URLs.
 
-use crate::utils::jar_resolver::JarResolver;
+use crate::utils::chrome_map_resolver::ChromeMapResolver;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
@@ -20,15 +20,15 @@ pub enum PathFinderError {
 }
 
 /// Resolves import strings to absolute filesystem paths. Handles `chrome://` and
-/// `resource://` via the JAR resolver, and relative paths via the importing file's location.
+/// `resource://` via the chrome-map resolver, and relative paths via the importing file's location.
 pub struct PathFinder {
-    jar_resolver: JarResolver,
+    resolver: ChromeMapResolver,
 }
 
 impl PathFinder {
-    /// Create a new PathFinder with a JarResolver
-    pub fn new(jar_resolver: JarResolver) -> Self {
-        Self { jar_resolver }
+    /// Create a new PathFinder with a ChromeMapResolver
+    pub fn new(resolver: ChromeMapResolver) -> Self {
+        Self { resolver }
     }
 
     /// Resolve an import string to a PathBuf relative to the current working directory
@@ -50,14 +50,14 @@ impl PathFinder {
             return Err(PathFinderError::EmptyImportString);
         }
 
-        let resolved_path = if self.jar_resolver.is_internal_url(import_string) {
-            self.jar_resolver
-                .resolve_path(import_string)
+        let resolved_path = if self.resolver.is_internal_url(import_string) {
+            self.resolver
+                .resolve_url(import_string)
                 .map_err(|e| match e {
-                    crate::utils::jar_resolver::JarResolverError::InvalidChromeUrl(url) => {
+                    crate::utils::chrome_map_resolver::ChromeMapError::InvalidUrl(url) => {
                         PathFinderError::UnsupportedImportFormat(url)
                     }
-                    crate::utils::jar_resolver::JarResolverError::NoMappingFound(url) => {
+                    crate::utils::chrome_map_resolver::ChromeMapError::NoMappingFound(url) => {
                         PathFinderError::ChromeMappingNotFound(url)
                     }
                     _ => PathFinderError::UnsupportedImportFormat(import_string.to_string()),
