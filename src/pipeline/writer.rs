@@ -1,14 +1,31 @@
 //! Transforms and writes all files from the dependency graph to the output directory.
 //! Handles JS, CSS, SVG, markdown, and opaque files with type-specific transformations.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use crate::dependency_graph::{DependencyGraph, FileType, TargetLocation};
 use crate::errors::{Error, Result};
 use crate::pipeline::dependency_walker::build_css_replacements;
 use crate::pipeline::svg::transform_svg_context_fill;
-use crate::utils::file_utils;
 use crate::transform;
+use crate::utils::file_utils;
+
+/// Merges global chrome:// URL mappings into a file's relative imports map.
+/// For URLs not already in the file's direct dependencies, computes a relative path
+/// from the current file's dist location to the target's dist location.
+fn merge_global_chrome_urls(
+    relative_imports: &mut HashMap<String, String>,
+    global_chrome_map: &HashMap<String, PathBuf>,
+    current_dist: &Path,
+) {
+    for (chrome_url, target_dist) in global_chrome_map {
+        if !relative_imports.contains_key(chrome_url) {
+            let rel = file_utils::compute_relative_path(current_dist, target_dist);
+            relative_imports.insert(chrome_url.clone(), rel);
+        }
+    }
+}
 
 /// Iterates all non-omitted files in the dependency graph, applies type-specific
 /// transformations (JS import rewriting, CSS URL replacement, SVG context-fill, markdown
@@ -19,9 +36,9 @@ pub fn transform_and_write_files(dep_graph: &mut DependencyGraph, output_dir: &P
     // story templates that reference assets from other components).
     let global_chrome_map = dep_graph.build_global_chrome_url_map();
 
-    let files = dep_graph.all_files().filter(|f| {
-        f.target_location != TargetLocation::Omit
-    });
+    let files = dep_graph
+        .all_files()
+        .filter(|f| f.target_location != TargetLocation::Omit);
 
     for file in files {
         let output_path = match file.get_dist_path() {
@@ -48,16 +65,12 @@ pub fn transform_and_write_files(dep_graph: &mut DependencyGraph, output_dir: &P
                         ))
                     })?;
 
-                // Merge global chrome:// URL mappings (for URLs not in this file's
-                // direct dependencies, e.g., chrome:// in story template attributes)
                 if let Some(current_dist) = file.get_dist_path() {
-                    for (chrome_url, target_dist) in &global_chrome_map {
-                        if !relative_imports.contains_key(chrome_url) {
-                            let rel =
-                                file_utils::compute_relative_path(&current_dist, target_dist);
-                            relative_imports.insert(chrome_url.clone(), rel);
-                        }
-                    }
+                    merge_global_chrome_urls(
+                        &mut relative_imports,
+                        &global_chrome_map,
+                        &current_dist,
+                    );
                 }
 
                 let css_replacements = build_css_replacements(dep_graph, file)?;
@@ -86,15 +99,12 @@ pub fn transform_and_write_files(dep_graph: &mut DependencyGraph, output_dir: &P
                         ))
                     })?;
 
-                // Merge global chrome:// URL mappings for CSS files too
                 if let Some(current_dist) = file.get_dist_path() {
-                    for (chrome_url, target_dist) in &global_chrome_map {
-                        if !relative_imports.contains_key(chrome_url) {
-                            let rel =
-                                file_utils::compute_relative_path(&current_dist, target_dist);
-                            relative_imports.insert(chrome_url.clone(), rel);
-                        }
-                    }
+                    merge_global_chrome_urls(
+                        &mut relative_imports,
+                        &global_chrome_map,
+                        &current_dist,
+                    );
                 }
 
                 let transformed_code =
@@ -131,25 +141,22 @@ pub fn transform_and_write_files(dep_graph: &mut DependencyGraph, output_dir: &P
                         .and_then(|p| p.file_name())
                         .and_then(|s| s.to_str())
                         .unwrap_or("unknown");
-                    let title =
-                        transform::markdown::title_for_component_readme(component_folder);
+                    let title = transform::markdown::title_for_component_readme(component_folder);
                     let content = std::fs::read_to_string(&file.path).map_err(|e| {
                         Error::Custom(format!(
                             "Failed to read stories.md file: {:?}: {e}",
                             file.path
                         ))
                     })?;
-                    let mdx =
-                        transform::markdown::transform_stories_md(&content, &title, &global_chrome_map);
+                    let mdx = transform::markdown::transform_stories_md(
+                        &content,
+                        &title,
+                        &global_chrome_map,
+                    );
                     // Write as .mdx (Storybook 7+ uses .mdx for docs, not .stories.mdx)
-                    let mdx_path = output_path
-                        .to_string_lossy()
-                        .replace(".stories.md", ".mdx");
+                    let mdx_path = output_path.to_string_lossy().replace(".stories.md", ".mdx");
                     std::fs::write(&mdx_path, mdx).map_err(|e| {
-                        Error::Custom(format!(
-                            "Failed to write MDX file: {:?}: {e}",
-                            file.path
-                        ))
+                        Error::Custom(format!("Failed to write MDX file: {:?}: {e}", file.path))
                     })?;
                 } else {
                     // other files are copied as is

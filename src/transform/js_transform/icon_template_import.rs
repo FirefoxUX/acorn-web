@@ -9,6 +9,10 @@ use oxc::span::SPAN;
 use oxc_traverse::{ReusableTraverseCtx, Traverse, TraverseCtx};
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
+
+static SRC_ATTR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(src|iconsrc)\s*=\s*["']([^"']+)["']"#).unwrap());
 
 /// Replaces static `chrome://` URLs in HTML templates and JS literals with
 /// `new URL('./path', import.meta.url).href` — the Vite-compatible way to
@@ -124,8 +128,6 @@ impl<'a> IconTemplateImportTransformer<'a> {
         template: &mut TemplateLiteral<'a>,
         ctx: &mut TraverseCtx<'a, ()>,
     ) {
-        let src_regex = Regex::new(r#"(src|iconsrc)\s*=\s*["']([^"']+)["']"#).unwrap();
-
         let mut idx = 0;
         while idx < template.quasis.len() {
             let quasi = &template.quasis[idx];
@@ -137,7 +139,7 @@ impl<'a> IconTemplateImportTransformer<'a> {
             // Find all matches in this quasi
             let mut cooked_str = cooked.as_ref();
             let mut found = false;
-            while let Some(caps) = src_regex.captures(cooked_str) {
+            while let Some(caps) = SRC_ATTR_RE.captures(cooked_str) {
                 let full_match = caps.get(0).unwrap();
                 let src_value = caps.get(2).unwrap().as_str();
                 if let Some(replacement_path) = self.path_replacements.get(src_value) {
@@ -169,6 +171,7 @@ impl<'a> IconTemplateImportTransformer<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn replace_src_with_url_expression(
         &mut self,
         template: &mut TemplateLiteral<'a>,

@@ -14,13 +14,11 @@ use std::sync::LazyLock;
 /// `fill-opacity="context-fill-opacity"` (defaults to 1).
 pub fn transform_svg_context_fill(svg: &str) -> String {
     // Replace fill="context-fill ..." variants with fill="black"
-    static FILL_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"fill="context-fill[^"]*""#).unwrap()
-    });
+    static FILL_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"fill="context-fill[^"]*""#).unwrap());
     // Remove fill-opacity="context-fill-opacity"
-    static FILL_OPACITY_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"\s*fill-opacity="context-fill-opacity""#).unwrap()
-    });
+    static FILL_OPACITY_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"\s*fill-opacity="context-fill-opacity""#).unwrap());
 
     let result = FILL_RE.replace_all(svg, r#"fill="black""#);
     let result = FILL_OPACITY_RE.replace_all(&result, "");

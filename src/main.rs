@@ -38,7 +38,9 @@ pub enum MainError {
     ConfigParseError(#[from] toml::de::Error),
     #[error("Failed to transform library: {0}")]
     TransformError(#[from] mozcomp::errors::Error),
-    #[error("Could not find chrome-map.json in {0}\n  Generate it with: cd <firefox_root> && ./mach build-backend --backend ChromeMap")]
+    #[error(
+        "Could not find chrome-map.json in {0}\n  Generate it with: cd <firefox_root> && ./mach build-backend --backend ChromeMap"
+    )]
     ChromeMapNotFound(String),
 }
 

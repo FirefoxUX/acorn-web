@@ -18,7 +18,11 @@ pub fn transform_icon_properties(css: &str) -> String {
     for block in blocks {
         match block {
             CssBlock::Text(text) => result.push_str(text),
-            CssBlock::DeclarationBlock { before, declarations, after } => {
+            CssBlock::DeclarationBlock {
+                before,
+                declarations,
+                after,
+            } => {
                 result.push_str(before);
                 let transformed = transform_declaration_block(declarations);
                 result.push_str(&transformed);
@@ -30,13 +34,96 @@ pub fn transform_icon_properties(css: &str) -> String {
     result
 }
 
+// --- CSS brace scanner: shared iterator for string/comment-aware brace tracking ---
+
+/// Events yielded by `CssBraceScanner` for top-level (depth 0↔1) brace transitions.
+enum BraceEvent {
+    /// A `{` that transitions from depth 0 to 1. `pos` is the index of the `{`.
+    Open { pos: usize },
+    /// A `}` that transitions from depth 1 to 0. `pos` is the index of the `}`.
+    Close { pos: usize },
+}
+
+/// Byte-by-byte CSS scanner that skips string literals and comments, tracks brace depth,
+/// and yields `BraceEvent`s for top-level open/close braces.
+struct CssBraceScanner<'a> {
+    bytes: &'a [u8],
+    pos: usize,
+    depth: i32,
+}
+
+impl<'a> CssBraceScanner<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self {
+            bytes,
+            pos: 0,
+            depth: 0,
+        }
+    }
+}
+
+impl Iterator for CssBraceScanner<'_> {
+    type Item = BraceEvent;
+
+    fn next(&mut self) -> Option<BraceEvent> {
+        while self.pos < self.bytes.len() {
+            let i = self.pos;
+
+            // Skip string literals
+            if self.bytes[i] == b'"' || self.bytes[i] == b'\'' {
+                let quote = self.bytes[i];
+                self.pos += 1;
+                while self.pos < self.bytes.len() && self.bytes[self.pos] != quote {
+                    if self.bytes[self.pos] == b'\\' {
+                        self.pos += 1;
+                    }
+                    self.pos += 1;
+                }
+                self.pos += 1;
+                continue;
+            }
+
+            // Skip comments
+            if self.pos + 1 < self.bytes.len() && self.bytes[i] == b'/' && self.bytes[i + 1] == b'*'
+            {
+                self.pos += 2;
+                while self.pos + 1 < self.bytes.len()
+                    && !(self.bytes[self.pos] == b'*' && self.bytes[self.pos + 1] == b'/')
+                {
+                    self.pos += 1;
+                }
+                self.pos += 2;
+                continue;
+            }
+
+            if self.bytes[i] == b'{' {
+                let was_top = self.depth == 0;
+                self.depth += 1;
+                self.pos += 1;
+                if was_top {
+                    return Some(BraceEvent::Open { pos: i });
+                }
+            } else if self.bytes[i] == b'}' {
+                self.depth -= 1;
+                self.pos += 1;
+                if self.depth == 0 {
+                    return Some(BraceEvent::Close { pos: i });
+                }
+            } else {
+                self.pos += 1;
+            }
+        }
+        None
+    }
+}
+
 /// A parsed CSS block — either raw text (selectors, at-rules) or a declaration block.
 enum CssBlock<'a> {
     Text(&'a str),
     DeclarationBlock {
-        before: &'a str,    // The opening `{`
+        before: &'a str,       // The opening `{`
         declarations: &'a str, // Content between braces
-        after: &'a str,     // The closing `}`
+        after: &'a str,        // The closing `}`
     },
 }
 
@@ -45,63 +132,28 @@ enum CssBlock<'a> {
 /// Nested rules (depth > 1) are handled recursively by the transform.
 fn parse_css_blocks(css: &str) -> Vec<CssBlock<'_>> {
     let mut blocks = Vec::new();
-    let mut depth: i32 = 0;
     let mut last_pos = 0;
-    let mut block_start = 0;
+    let mut block_content_start = 0;
 
-    let bytes = css.as_bytes();
-    let mut i = 0;
-
-    while i < bytes.len() {
-        // Skip string literals
-        if bytes[i] == b'"' || bytes[i] == b'\'' {
-            let quote = bytes[i];
-            i += 1;
-            while i < bytes.len() && bytes[i] != quote {
-                if bytes[i] == b'\\' {
-                    i += 1; // skip escaped char
+    for event in CssBraceScanner::new(css.as_bytes()) {
+        match event {
+            BraceEvent::Open { pos } => {
+                if last_pos <= pos {
+                    blocks.push(CssBlock::Text(&css[last_pos..pos + 1]));
                 }
-                i += 1;
+                block_content_start = pos + 1;
             }
-            i += 1; // skip closing quote
-            continue;
-        }
-
-        // Skip comments
-        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            i += 2; // skip */
-            continue;
-        }
-
-        if bytes[i] == b'{' {
-            if depth == 0 {
-                // Push any text before this block
-                if last_pos < i + 1 {
-                    blocks.push(CssBlock::Text(&css[last_pos..i + 1]));
-                }
-                block_start = i + 1;
-            }
-            depth += 1;
-        } else if bytes[i] == b'}' {
-            depth -= 1;
-            if depth == 0 {
-                let declarations = &css[block_start..i];
+            BraceEvent::Close { pos } => {
                 blocks.push(CssBlock::DeclarationBlock {
                     before: "",
-                    declarations,
+                    declarations: &css[block_content_start..pos],
                     after: "}",
                 });
-                last_pos = i + 1;
+                last_pos = pos + 1;
             }
         }
-        i += 1;
     }
 
-    // Push any remaining text
     if last_pos < css.len() {
         blocks.push(CssBlock::Text(&css[last_pos..]));
     }
@@ -142,79 +194,50 @@ fn transform_declaration_block(block_content: &str) -> String {
 
 /// Check if a CSS block contains background-image with an .svg URL reference
 fn has_svg_background_image(css: &str) -> bool {
-    static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"background-image\s*:[^;]*\.svg[^;]*;"#).unwrap()
-    });
+    static RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"background-image\s*:[^;]*\.svg[^;]*;"#).unwrap());
     RE.is_match(css)
 }
 
 /// Check if a CSS block contains content: url() with an .svg reference
 fn has_svg_content_url(css: &str) -> bool {
-    static RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"content\s*:\s*url\([^)]*\.svg[^)]*\)"#).unwrap()
-    });
+    static RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r#"content\s*:\s*url\([^)]*\.svg[^)]*\)"#).unwrap());
     RE.is_match(css)
 }
 
 /// Split a declaration block into own declarations (before any nested `{ }` blocks)
 /// and the rest (nested rules). This is a simplified split.
 fn split_declarations_and_nested(content: &str) -> (String, String) {
-    let mut depth = 0;
-    let mut first_nested_start = None;
-
-    let bytes = content.as_bytes();
-    let mut i = 0;
-
-    while i < bytes.len() {
-        // Skip strings
-        if bytes[i] == b'"' || bytes[i] == b'\'' {
-            let quote = bytes[i];
-            i += 1;
-            while i < bytes.len() && bytes[i] != quote {
-                if bytes[i] == b'\\' { i += 1; }
-                i += 1;
-            }
-            i += 1;
-            continue;
-        }
-        // Skip comments
-        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            i += 2;
-            continue;
-        }
-
-        if bytes[i] == b'{' {
-            if depth == 0 && first_nested_start.is_none() {
-                // Find start of this nested rule's selector (go back to find line start)
-                let mut sel_start = i;
-                while sel_start > 0 {
-                    // Walk backwards to find start of the selector line
-                    if content[..sel_start].ends_with('\n') || content[..sel_start].ends_with(';') || content[..sel_start].ends_with('}') {
-                        break;
-                    }
-                    sel_start -= 1;
+    // Find the first top-level open brace (start of first nested rule)
+    for event in CssBraceScanner::new(content.as_bytes()) {
+        if let BraceEvent::Open { pos } = event {
+            // Walk backwards from the `{` to find the start of the selector
+            let mut sel_start = pos;
+            while sel_start > 0 {
+                if content[..sel_start].ends_with('\n')
+                    || content[..sel_start].ends_with(';')
+                    || content[..sel_start].ends_with('}')
+                {
+                    break;
                 }
-                first_nested_start = Some(sel_start);
+                sel_start -= 1;
             }
-            depth += 1;
-        } else if bytes[i] == b'}' {
-            depth -= 1;
+            return (
+                content[..sel_start].to_string(),
+                content[sel_start..].to_string(),
+            );
         }
-        i += 1;
     }
-
-    match first_nested_start {
-        Some(pos) => (content[..pos].to_string(), content[pos..].to_string()),
-        None => (content.to_string(), String::new()),
-    }
+    (content.to_string(), String::new())
 }
 
 /// Transform the own declarations of a block (not nested rules).
-fn transform_own_declarations(declarations: &str, _has_svg_bg_parent: bool, _has_svg_content_parent: bool) -> String {
+fn transform_own_declarations(
+    declarations: &str,
+    _has_svg_bg_parent: bool,
+    _has_svg_content_parent: bool,
+) -> String {
     let has_moz_context = declarations.contains("-moz-context-properties");
     let has_color_prop = HAS_COLOR_RE.is_match(declarations);
     let has_bg_svg = has_svg_background_image(declarations);
@@ -259,60 +282,28 @@ fn transform_own_declarations(declarations: &str, _has_svg_bg_parent: bool, _has
 
 /// Recursively transform nested CSS content
 fn transform_nested_content(content: &str) -> String {
-    // Re-parse nested content through transform_icon_properties
-    // since nested rules can also contain -moz-context-properties
     let mut result = String::with_capacity(content.len());
-    let mut depth: i32 = 0;
     let mut last_end = 0;
-    let mut block_start = 0;
+    let mut block_content_start = 0;
 
-    let bytes = content.as_bytes();
-    let mut i = 0;
-
-    while i < bytes.len() {
-        // Skip strings
-        if bytes[i] == b'"' || bytes[i] == b'\'' {
-            let quote = bytes[i];
-            i += 1;
-            while i < bytes.len() && bytes[i] != quote {
-                if bytes[i] == b'\\' { i += 1; }
-                i += 1;
+    for event in CssBraceScanner::new(content.as_bytes()) {
+        match event {
+            BraceEvent::Open { pos } => {
+                block_content_start = pos + 1;
             }
-            i += 1;
-            continue;
-        }
-        // Skip comments
-        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            i += 2;
-            continue;
-        }
-
-        if bytes[i] == b'{' {
-            if depth == 0 {
-                block_start = i + 1;
-            }
-            depth += 1;
-        } else if bytes[i] == b'}' {
-            depth -= 1;
-            if depth == 0 {
-                // Push selector text
-                result.push_str(&content[last_end..block_start]);
+            BraceEvent::Close { pos } => {
+                // Push selector text (including the `{`)
+                result.push_str(&content[last_end..block_content_start]);
                 // Recursively transform the nested block content
-                let inner = &content[block_start..i];
+                let inner = &content[block_content_start..pos];
                 let transformed = transform_declaration_block(inner);
                 result.push_str(&transformed);
                 result.push('}');
-                last_end = i + 1;
+                last_end = pos + 1;
             }
         }
-        i += 1;
     }
 
-    // Push any remaining text
     if last_end < content.len() {
         result.push_str(&content[last_end..]);
     }
@@ -327,24 +318,14 @@ static HAS_COLOR_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^\s*color\s*:").unwrap()
 });
 
-static MOZ_CONTEXT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^\s*-moz-context-properties\s*:[^;]*;\s*\n?").unwrap()
-});
+static MOZ_CONTEXT_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*-moz-context-properties\s*:[^;]*;\s*\n?").unwrap());
 
-static BG_IMAGE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^(\s*)background-image(\s*:\s*[^;]*\.svg[^;]*;)").unwrap()
-});
+static BG_IMAGE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^(\s*)background-image(\s*:\s*[^;]*\.svg[^;]*;)").unwrap());
 
-static BG_SIZE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^(\s*)background-size(\s*:[^;]*;)").unwrap()
-});
-
-static BG_REPEAT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^(\s*)background-repeat(\s*:[^;]*;)").unwrap()
-});
-
-static BG_POSITION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^(\s*)background-position(\s*:[^;]*;)").unwrap()
+static BG_PROP_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^(\s*)background-(size|repeat|position)(\s*:[^;]*;)").unwrap()
 });
 
 static FILL_DECL_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -352,13 +333,11 @@ static FILL_DECL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?m)^(\s*)fill(\s*:\s*)([^;]+)(;\s*\n?)").unwrap()
 });
 
-static STROKE_DECL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^\s*stroke\s*:[^;]*;\s*\n?").unwrap()
-});
+static STROKE_DECL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*stroke\s*:[^;]*;\s*\n?").unwrap());
 
-static FILL_OPACITY_DECL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?m)^\s*fill-opacity\s*:[^;]*;\s*\n?").unwrap()
-});
+static FILL_OPACITY_DECL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*fill-opacity\s*:[^;]*;\s*\n?").unwrap());
 
 static CONTENT_URL_SVG_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?m)^(\s*)content(\s*:\s*)url\(([^)]*\.svg[^)]*)\)(\s*;\s*\n?)"#).unwrap()
@@ -372,77 +351,66 @@ fn convert_background_to_mask(css: &str) -> String {
     let mut result = css.to_string();
 
     // background-image → mask-image (with -webkit- prefix)
-    result = BG_IMAGE_RE.replace_all(&result, |caps: &regex::Captures| {
-        let indent = &caps[1];
-        let value = &caps[2];
-        format!(
-            "{indent}-webkit-mask-image{value}\n{indent}mask-image{value}"
-        )
-    }).into_owned();
+    result = BG_IMAGE_RE
+        .replace_all(&result, |caps: &regex::Captures| {
+            let indent = &caps[1];
+            let value = &caps[2];
+            format!("{indent}-webkit-mask-image{value}\n{indent}mask-image{value}")
+        })
+        .into_owned();
 
-    // background-size → mask-size
-    result = BG_SIZE_RE.replace_all(&result, |caps: &regex::Captures| {
-        let indent = &caps[1];
-        let value = &caps[2];
-        format!(
-            "{indent}-webkit-mask-size{value}\n{indent}mask-size{value}"
-        )
-    }).into_owned();
-
-    // background-repeat → mask-repeat
-    result = BG_REPEAT_RE.replace_all(&result, |caps: &regex::Captures| {
-        let indent = &caps[1];
-        let value = &caps[2];
-        format!(
-            "{indent}-webkit-mask-repeat{value}\n{indent}mask-repeat{value}"
-        )
-    }).into_owned();
-
-    // background-position → mask-position
-    result = BG_POSITION_RE.replace_all(&result, |caps: &regex::Captures| {
-        let indent = &caps[1];
-        let value = &caps[2];
-        format!(
-            "{indent}-webkit-mask-position{value}\n{indent}mask-position{value}"
-        )
-    }).into_owned();
+    // background-size/repeat/position → mask-size/repeat/position
+    result = BG_PROP_RE
+        .replace_all(&result, |caps: &regex::Captures| {
+            let indent = &caps[1];
+            let prop = &caps[2];
+            let value = &caps[3];
+            format!("{indent}-webkit-mask-{prop}{value}\n{indent}mask-{prop}{value}")
+        })
+        .into_owned();
 
     result
 }
 
 fn convert_content_to_mask(css: &str) -> String {
-    CONTENT_URL_SVG_RE.replace_all(css, |caps: &regex::Captures| {
-        let indent = &caps[1];
-        let url_value = &caps[3]; // the URL path inside url()
-        format!(
-            "{indent}content: \"\";\n\
+    CONTENT_URL_SVG_RE
+        .replace_all(css, |caps: &regex::Captures| {
+            let indent = &caps[1];
+            let url_value = &caps[3]; // the URL path inside url()
+            format!(
+                "{indent}content: \"\";\n\
              {indent}-webkit-mask-image: url({url_value});\n\
              {indent}mask-image: url({url_value});\n\
              {indent}-webkit-mask-size: contain;\n\
              {indent}mask-size: contain;\n\
              {indent}background-color: currentColor;\n"
-        )
-    }).into_owned()
+            )
+        })
+        .into_owned()
 }
 
 fn convert_fill_to_background_color(css: &str) -> String {
-    FILL_DECL_RE.replace_all(css, |caps: &regex::Captures| {
-        let indent = &caps[1];
-        let separator = &caps[2];
-        let value = &caps[3];
-        let end = &caps[4];
-        format!("{indent}background-color{separator}{value}{end}")
-    }).into_owned()
+    FILL_DECL_RE
+        .replace_all(css, |caps: &regex::Captures| {
+            let indent = &caps[1];
+            let separator = &caps[2];
+            let value = &caps[3];
+            let end = &caps[4];
+            format!("{indent}background-color{separator}{value}{end}")
+        })
+        .into_owned()
 }
 
 fn convert_fill_to_color(css: &str) -> String {
-    FILL_DECL_RE.replace_all(css, |caps: &regex::Captures| {
-        let indent = &caps[1];
-        let separator = &caps[2];
-        let value = &caps[3];
-        let end = &caps[4];
-        format!("{indent}color{separator}{value}{end}")
-    }).into_owned()
+    FILL_DECL_RE
+        .replace_all(css, |caps: &regex::Captures| {
+            let indent = &caps[1];
+            let separator = &caps[2];
+            let value = &caps[3];
+            let end = &caps[4];
+            format!("{indent}color{separator}{value}{end}")
+        })
+        .into_owned()
 }
 
 fn remove_fill_declarations(css: &str) -> String {

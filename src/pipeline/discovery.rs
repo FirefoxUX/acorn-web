@@ -21,9 +21,7 @@ pub fn process_components(
         let full_pattern = firefox_root.join(pattern.trim_start_matches('/'));
         let full_pattern_str = full_pattern.to_string_lossy();
 
-        let files: Vec<PathBuf> = glob(&full_pattern_str)?
-            .filter_map(|r| r.ok())
-            .collect();
+        let files: Vec<PathBuf> = glob(&full_pattern_str)?.filter_map(|r| r.ok()).collect();
 
         for file_path in files {
             let file_path = file_utils::make_relative_to_cwd(&file_path);
@@ -75,9 +73,7 @@ pub fn process_global_stylesheets(
         let full_pattern = firefox_root.join(pattern.trim_start_matches('/'));
         let full_pattern_str = full_pattern.to_string_lossy();
 
-        let files: Vec<PathBuf> = glob(&full_pattern_str)?
-            .filter_map(|r| r.ok())
-            .collect();
+        let files: Vec<PathBuf> = glob(&full_pattern_str)?.filter_map(|r| r.ok()).collect();
 
         for file_path in files {
             let file_path = file_utils::make_relative_to_cwd(&file_path);

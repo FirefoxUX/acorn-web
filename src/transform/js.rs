@@ -136,8 +136,11 @@ fn guard_custom_element_definitions(code: &str) -> String {
         regex::Regex::new(r#"customElements\.define\(("[^"]+"),\s*(.+?)\);"#).unwrap()
     });
 
-    RE.replace_all(code, r#"if (!customElements.get($1)) { customElements.define($1, $2); }"#)
-        .into_owned()
+    RE.replace_all(
+        code,
+        r#"if (!customElements.get($1)) { customElements.define($1, $2); }"#,
+    )
+    .into_owned()
 }
 
 /// Transforms `-moz-context-properties` icon patterns inside `css\`...\`` tagged template
@@ -155,9 +158,8 @@ fn transform_inline_css_icon_properties(code: &str) -> String {
     }
 
     // Also transform <style>...</style> blocks in html`` templates
-    static STYLE_TAG_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r"(?s)<style[^>]*>(.*?)</style>").unwrap()
-    });
+    static STYLE_TAG_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?s)<style[^>]*>(.*?)</style>").unwrap());
 
     let mut result = String::with_capacity(code.len());
     let mut search_start = 0;
@@ -286,8 +288,7 @@ fn transform_img_to_acorn_icon(code: &str) -> String {
 
     // Pattern 2: <img ...></img>
     static IMG_EXPLICIT_CLOSE: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r#"(?s)<img\b((?:[^>]|(?:"[^"]*")|(?:'[^']*'))*?)>\s*</img\s*>"#)
-            .unwrap()
+        regex::Regex::new(r#"(?s)<img\b((?:[^>]|(?:"[^"]*")|(?:'[^']*'))*?)>\s*</img\s*>"#).unwrap()
     });
 
     let mut result = IMG_SELF_CLOSING
@@ -330,8 +331,7 @@ fn transform_css_img_selectors(code: &str) -> String {
     let mut search_start = 0;
 
     // Only process inside css`` templates
-    static CSS_TAG: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"css`").unwrap());
+    static CSS_TAG: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"css`").unwrap());
 
     while let Some(m) = CSS_TAG.find(&code[search_start..]) {
         let content_start = search_start + m.end();
@@ -393,12 +393,12 @@ fn guard_document_l10n_calls(code: &str) -> String {
     let lines: Vec<&str> = result.lines().collect();
     let mut new_lines = Vec::with_capacity(lines.len());
     for (i, line) in lines.iter().enumerate() {
-        if line.contains("document.l10n.") && !line.trim().starts_with("//") && !line.trim().starts_with("if") {
+        if line.contains("document.l10n.")
+            && !line.trim().starts_with("//")
+            && !line.trim().starts_with("if")
+        {
             // Check if the previous non-empty line is an `if (document.l10n)` guard
-            let prev_significant = lines[..i]
-                .iter()
-                .rev()
-                .find(|l| !l.trim().is_empty());
+            let prev_significant = lines[..i].iter().rev().find(|l| !l.trim().is_empty());
             // Only consider it already guarded if the previous line is an opening
             // guard block (ends with `{`), not a single-line guarded statement
             let already_guarded = prev_significant
@@ -446,9 +446,8 @@ fn add_acorn_icon_import(code: &str) -> String {
     }
 
     // Insert after the last import statement
-    static LAST_IMPORT: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r"(?m)^import\s[^\n]*;\n").unwrap()
-    });
+    static LAST_IMPORT: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"(?m)^import\s[^\n]*;\n").unwrap());
 
     if let Some(m) = LAST_IMPORT.find_iter(code).last() {
         let insert_pos = m.end();
@@ -467,10 +466,7 @@ fn add_acorn_icon_import(code: &str) -> String {
 mod tests {
     use super::*;
 
-    fn transform_with_replacements(
-        code: &str,
-        replacements: &HashMap<String, String>,
-    ) -> String {
+    fn transform_with_replacements(code: &str, replacements: &HashMap<String, String>) -> String {
         transform_from_string(code, replacements, None).unwrap()
     }
 
@@ -548,7 +544,9 @@ MozXULElement.insertFTLIfNeeded("toolkit/global/mozFoo.ftl");
     document.l10n.translateFragment(this);
 "#;
         let result = guard_document_l10n_calls(code);
-        assert!(result.contains("if (document.l10n) { document.l10n.setAttributes(this, \"my-link-text\"); }"));
+        assert!(result.contains(
+            "if (document.l10n) { document.l10n.setAttributes(this, \"my-link-text\"); }"
+        ));
         assert!(result.contains("if (document.l10n) { document.l10n.translateFragment(this); }"));
     }
 

@@ -32,9 +32,7 @@ pub fn process_and_write_docs(
         let full_pattern = firefox_root.join(pattern.trim_start_matches('/'));
         let full_pattern_str = full_pattern.to_string_lossy();
 
-        let files: Vec<PathBuf> = glob(&full_pattern_str)?
-            .filter_map(|r| r.ok())
-            .collect();
+        let files: Vec<PathBuf> = glob(&full_pattern_str)?.filter_map(|r| r.ok()).collect();
 
         for file_path in files {
             let file_name = match file_path.file_name().and_then(|s| s.to_str()) {
@@ -45,10 +43,7 @@ pub fn process_and_write_docs(
             let title = transform::markdown::title_for_global_doc(&file_name);
 
             let content = std::fs::read_to_string(&file_path).map_err(|e| {
-                Error::Custom(format!(
-                    "Failed to read doc file {:?}: {e}",
-                    file_path
-                ))
+                Error::Custom(format!("Failed to read doc file {:?}: {e}", file_path))
             })?;
 
             let mdx =

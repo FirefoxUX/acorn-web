@@ -11,7 +11,7 @@ use std::path::Path;
 
 use crate::{
     errors::{Error, Result},
-    transform::css_transform::{icon_property_transform, ImportReplacer, UrlReplacer},
+    transform::css_transform::{ImportReplacer, UrlReplacer, icon_property_transform},
     utils::url::replace_chrome_urls,
 };
 
@@ -50,12 +50,11 @@ pub fn transform_from_string(
     ImportReplacer::new(url_replacements).build(&mut stylesheet)?;
 
     // Serialize the transformed stylesheet back to CSS
-    let result =
-        stylesheet
-            .to_css(PrinterOptions::default())
-            .map_err(|e| Error::CssSerialize {
-                message: format!("{:?}", e),
-            })?;
+    let result = stylesheet
+        .to_css(PrinterOptions::default())
+        .map_err(|e| Error::CssSerialize {
+            message: format!("{:?}", e),
+        })?;
 
     // Post-process: transform -moz-context-properties icon patterns to mask-image
     let code = icon_property_transform::transform_icon_properties(&result.code);

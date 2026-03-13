@@ -51,9 +51,8 @@ pub fn generate_index_files(dep_graph: &DependencyGraph, output_dir: &Path) -> R
          {imports}\n"
     );
     let path = output_dir.join("index.mjs");
-    std::fs::write(&path, content).map_err(|e| {
-        Error::Custom(format!("Failed to write root index.mjs: {e}"))
-    })?;
+    std::fs::write(&path, content)
+        .map_err(|e| Error::Custom(format!("Failed to write root index.mjs: {e}")))?;
 
     eprintln!("Generated index files for {} components", components.len());
     Ok(())
@@ -122,9 +121,8 @@ if (!customElements.get("acorn-icon")) {
     })?;
 
     let output_path = deps_dir.join("acorn-icon.mjs");
-    std::fs::write(&output_path, component_content).map_err(|e| {
-        Error::Custom(format!("Failed to write acorn-icon.mjs: {e}"))
-    })?;
+    std::fs::write(&output_path, component_content)
+        .map_err(|e| Error::Custom(format!("Failed to write acorn-icon.mjs: {e}")))?;
 
     Ok(())
 }
@@ -199,9 +197,8 @@ export async function initFluent(options = {{}}) {{
     );
 
     let output_path = output_dir.join("fluent-setup.mjs");
-    std::fs::write(&output_path, module_content).map_err(|e| {
-        Error::Custom(format!("Failed to write fluent-setup.mjs: {e}"))
-    })?;
+    std::fs::write(&output_path, module_content)
+        .map_err(|e| Error::Custom(format!("Failed to write fluent-setup.mjs: {e}")))?;
 
     Ok(())
 }

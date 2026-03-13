@@ -100,7 +100,7 @@ pub fn title_for_global_doc(filename: &str) -> String {
         .unwrap_or(filename);
 
     let words: Vec<String> = name
-        .split(|c: char| c == '-' || c == '_' || c == '.')
+        .split(['-', '_', '.'])
         .filter(|w| !w.is_empty())
         .map(capitalize)
         .collect();

@@ -180,133 +180,75 @@ impl DependencyGraph {
     }
 
     /// Check if the graph has any circular dependencies.
+    #[cfg(any(debug_assertions, test))]
     pub fn has_cycles(&self) -> bool {
         petgraph::algo::is_cyclic_directed(&self.graph)
     }
 
-    /// Get the number of files in the graph.
-    pub fn file_count(&self) -> usize {
-        self.graph.node_count()
-    }
-
-    /// Get the number of dependencies (edges) in the graph.
-    pub fn dependency_count(&self) -> usize {
-        self.graph.edge_count()
-    }
-
     /// Print a debug representation of the entire dependency graph to stdout.
+    #[cfg(debug_assertions)]
     pub fn debug_print(&self) {
         println!("=== Dependency Graph Debug ===");
         println!(
             "Files: {}, Dependencies: {}",
-            self.file_count(),
-            self.dependency_count()
+            self.graph.node_count(),
+            self.graph.edge_count()
         );
 
         if self.has_cycles() {
-            println!("⚠️  WARNING: Circular dependencies detected!");
+            println!("WARNING: Circular dependencies detected!");
         }
 
         println!();
 
         // Print all files grouped by target location
-        self.debug_print_files_by_target();
+        {
+            use std::collections::BTreeMap;
+            let mut by_target: BTreeMap<String, Vec<&FileNode>> = BTreeMap::new();
+            for file in self.all_files() {
+                let target_key = format!("{:?}", file.target_location);
+                by_target.entry(target_key).or_default().push(file);
+            }
+            println!("Files by Target Location:");
+            for (target, files) in by_target {
+                println!("  {} ({} files):", target, files.len());
+                for file in files {
+                    println!("    {:?} {}", file.file_type, file.path.display());
+                }
+            }
+        }
 
         println!();
 
         // Print dependency tree
-        self.debug_print_dependency_tree();
-
-        println!("=== End Debug ===");
-    }
-
-    /// Print files grouped by their target location to stdout.
-    fn debug_print_files_by_target(&self) {
-        use std::collections::BTreeMap;
-
-        let mut by_target: BTreeMap<String, Vec<&FileNode>> = BTreeMap::new();
-
-        for file in self.all_files() {
-            let target_key = match &file.target_location {
-                TargetLocation::Component(name) => format!("Component({})", name),
-                TargetLocation::CssGlobal => "CssGlobal".to_string(),
-                TargetLocation::Asset => "Asset".to_string(),
-                TargetLocation::Dependency => "Dependency".to_string(),
-                TargetLocation::Omit => "Omit".to_string(),
-            };
-            by_target.entry(target_key).or_default().push(file);
-        }
-
-        println!("📁 Files by Target Location:");
-        for (target, files) in by_target {
-            println!("  {} ({} files):", target, files.len());
-            for file in files {
-                let file_type_icon = match file.file_type {
-                    FileType::JsComponent => "🧩",
-                    FileType::JsFile => "📜",
-                    FileType::CssFile => "🎨",
-                    FileType::OpaqueFile => "📄",
-                };
+        println!("Files with dependencies:");
+        for idx in self.graph.node_indices() {
+            let file = &self.graph[idx];
+            let mut deps: Vec<_> = self
+                .graph
+                .edges_directed(idx, Direction::Outgoing)
+                .collect();
+            if deps.is_empty() {
+                continue;
+            }
+            println!("  {:?} {}", file.file_type, file.path.display());
+            deps.sort_by(|a, b| {
+                self.graph[a.target()]
+                    .path
+                    .cmp(&self.graph[b.target()].path)
+            });
+            for edge in deps {
+                let target = &self.graph[edge.target()];
                 println!(
-                    "    {} {} ({:?})",
-                    file_type_icon,
-                    file.path.display(),
-                    file.file_type
+                    "    \"{}\" -> {:?} {}",
+                    edge.weight().import_statement,
+                    target.file_type,
+                    target.path.display()
                 );
             }
         }
-    }
 
-    /// Print the dependency tree showing relationships to stdout.
-    fn debug_print_dependency_tree(&self) {
-        println!("🌳 Files with dependencies:");
-
-        // Print only files that have at least one dependency (outgoing edge)
-        for (node_idx, file) in self.all_files_with_index() {
-            // Get direct dependencies (outgoing edges)
-            let mut dependencies: Vec<_> = self
-                .graph
-                .edges_directed(node_idx, Direction::Outgoing)
-                .collect();
-            if dependencies.is_empty() {
-                continue;
-            }
-
-            let file_type_icon = match file.file_type {
-                FileType::JsComponent => "🧩",
-                FileType::JsFile => "📜",
-                FileType::CssFile => "🎨",
-                FileType::OpaqueFile => "📄",
-            };
-            println!("└─ {} {}", file_type_icon, file.path.display());
-
-            dependencies.sort_by(|a, b| {
-                let a_node = &self.graph[a.target()];
-                let b_node = &self.graph[b.target()];
-                a_node.path.cmp(&b_node.path)
-            });
-
-            for edge in dependencies {
-                let target_node = &self.graph[edge.target()];
-                let import_stmt = &edge.weight().import_statement;
-                let target_icon = match target_node.file_type {
-                    FileType::JsComponent => "🧩",
-                    FileType::JsFile => "📜",
-                    FileType::CssFile => "🎨",
-                    FileType::OpaqueFile => "📄",
-                };
-                println!("    └─ 📎 \"{}\"", import_stmt);
-                println!("      -> {} {}", target_icon, target_node.path.display());
-            }
-        }
-    }
-
-    /// Get all files in the graph, with their node indices.
-    fn all_files_with_index(&self) -> Vec<(NodeIndex, &FileNode)> {
-        self.graph
-            .node_indices()
-            .map(|idx| (idx, &self.graph[idx]))
-            .collect()
+        println!("=== End Debug ===");
     }
 
     /// Get all outgoing dependencies from a file.
@@ -343,15 +285,11 @@ impl DependencyGraph {
     ) -> Result<HashMap<String, String>, DependencyGraphError> {
         let current_file = self
             .get_file(relative_from_path)
-            .ok_or_else(|| {
-                DependencyGraphError::FileNotFound(relative_from_path.to_path_buf())
-            })?;
+            .ok_or_else(|| DependencyGraphError::FileNotFound(relative_from_path.to_path_buf()))?;
 
         let current_dist_path = current_file
             .get_dist_path()
-            .ok_or_else(|| {
-                DependencyGraphError::FileNotFound(relative_from_path.to_path_buf())
-            })?;
+            .ok_or_else(|| DependencyGraphError::FileNotFound(relative_from_path.to_path_buf()))?;
 
         let dependencies = self.get_file_dependencies(query_path)?;
         let mut replacements = HashMap::new();

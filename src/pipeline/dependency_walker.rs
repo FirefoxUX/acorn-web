@@ -84,7 +84,6 @@ pub fn process_dependencies(
                 Path::new(&dep).extension().and_then(|s| s.to_str()),
             ) {
                 (FileType::JsComponent, Some("css")) => TargetLocation::Omit,
-                (FileType::JsFile, Some("css")) => TargetLocation::Omit,
                 (_, Some("png") | Some("jpg") | Some("jpeg") | Some("svg")) => {
                     TargetLocation::Asset
                 }
@@ -138,8 +137,8 @@ pub fn build_css_replacements(
                     css_path
                 ))
             })?;
-        let css_code = transform::css::transform_from_file(&css_path, &relative_imports)
-            .map_err(|e| {
+        let css_code =
+            transform::css::transform_from_file(&css_path, &relative_imports).map_err(|e| {
                 Error::Custom(format!(
                     "Failed to transform CSS file: {:?}: {}",
                     css_path, e

@@ -179,13 +179,19 @@ mod tests {
         let deps = parse(
             r#"const t = html`<link rel="stylesheet" href="chrome://global/skin/design.css" />`;"#,
         );
-        assert!(deps.imports.contains(&"chrome://global/skin/design.css".to_string()));
+        assert!(
+            deps.imports
+                .contains(&"chrome://global/skin/design.css".to_string())
+        );
     }
 
     #[test]
     fn test_img_src_in_template() {
         let deps = parse(r#"const t = html`<img src="chrome://global/skin/icon.svg" />`;"#);
-        assert!(deps.imports.contains(&"chrome://global/skin/icon.svg".to_string()));
+        assert!(
+            deps.imports
+                .contains(&"chrome://global/skin/icon.svg".to_string())
+        );
     }
 
     #[test]

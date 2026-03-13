@@ -120,12 +120,10 @@ impl PathFinder {
         };
 
         // Canonicalize to resolve .. and . components
-        let canonical = resolved
-            .canonicalize()
-            .unwrap_or_else(|_| {
-                // If canonicalize fails, try manual resolution
-                super::file_utils::normalize_path(&resolved)
-            });
+        let canonical = resolved.canonicalize().unwrap_or_else(|_| {
+            // If canonicalize fails, try manual resolution
+            super::file_utils::normalize_path(&resolved)
+        });
 
         Ok(canonical)
     }

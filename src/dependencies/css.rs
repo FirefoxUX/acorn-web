@@ -108,8 +108,11 @@ mod tests {
     fn test_import_rule() {
         let css = r#"@import url("chrome://global/skin/design-system/tokens.css");"#;
         let deps = dependencies_from_string(css).unwrap();
-        assert!(deps.contains(&"chrome://global/skin/design-system/tokens.css".to_string()),
-            "Expected tokens.css in deps: {:?}", deps);
+        assert!(
+            deps.contains(&"chrome://global/skin/design-system/tokens.css".to_string()),
+            "Expected tokens.css in deps: {:?}",
+            deps
+        );
     }
 
     #[test]
@@ -120,7 +123,10 @@ mod tests {
 }
 "#;
         let deps = dependencies_from_string(css).unwrap();
-        assert!(deps.contains(&"chrome://global/skin/icons/move-16.svg".to_string()),
-            "Expected move-16.svg in deps: {:?}", deps);
+        assert!(
+            deps.contains(&"chrome://global/skin/icons/move-16.svg".to_string()),
+            "Expected move-16.svg in deps: {:?}",
+            deps
+        );
     }
 }

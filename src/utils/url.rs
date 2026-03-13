@@ -27,9 +27,8 @@ pub fn replace_chrome_urls(code: &str, url_replacements: &HashMap<String, String
         return code.to_string();
     }
 
-    static CHROME_URL_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new(r#"chrome://[^"'\s\)>}]+"#).unwrap()
-    });
+    static CHROME_URL_RE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r#"chrome://[^"'\s\)>}]+"#).unwrap());
 
     CHROME_URL_RE
         .replace_all(code, |caps: &regex::Captures| {
@@ -69,9 +68,13 @@ mod tests {
 
     #[test]
     fn test_is_unresolvable_firefox_url() {
-        assert!(is_unresolvable_firefox_url("resource://gre/modules/AppConstants.sys.mjs"));
+        assert!(is_unresolvable_firefox_url(
+            "resource://gre/modules/AppConstants.sys.mjs"
+        ));
         assert!(!is_unresolvable_firefox_url("resource://gre/skin/foo.css"));
-        assert!(!is_unresolvable_firefox_url("chrome://global/content/foo.mjs"));
+        assert!(!is_unresolvable_firefox_url(
+            "chrome://global/content/foo.mjs"
+        ));
     }
 
     #[test]

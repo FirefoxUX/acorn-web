@@ -7,6 +7,17 @@ use oxc::{ast::ast, span::SPAN};
 use oxc_traverse::{ReusableTraverseCtx, Traverse, TraverseCtx};
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
+
+static LINK_HREF_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"<link[^>]*href\s*=\s*["']([^"']+)["'][^>]*/?>"#).unwrap());
+
+static LINK_STYLESHEET_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"<link[^>]*rel\s*=\s*["']stylesheet["'][^>]*/?>\s*"#).unwrap());
+
+static LINK_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"<link[\s\S]*?rel\s*=\s*[\"']stylesheet[\"'][\s\S]*/?>"#).unwrap()
+});
 
 /// Finds `<link rel="stylesheet">` tags in `html``\`` templates, removes them, and
 /// injects a `static styles = [...]` property on the class with the CSS content inlined
@@ -37,8 +48,7 @@ impl<'a> CssInlineTransformer<'a> {
     }
 
     fn extract_href_from_link_tag(&self, template_str: &str) -> Option<String> {
-        let link_regex = Regex::new(r#"<link[^>]*href\s*=\s*["']([^"']+)["'][^>]*/?>"#).unwrap();
-        if let Some(caps) = link_regex.captures(template_str) {
+        if let Some(caps) = LINK_HREF_RE.captures(template_str) {
             caps.get(1).map(|m| m.as_str().to_string())
         } else {
             None
@@ -46,9 +56,7 @@ impl<'a> CssInlineTransformer<'a> {
     }
 
     fn remove_link_tag(&self, template_str: &str) -> String {
-        let link_regex =
-            Regex::new(r#"<link[^>]*rel\s*=\s*["']stylesheet["'][^>]*/?>\s*"#).unwrap();
-        link_regex.replace_all(template_str, "").to_string()
+        LINK_STYLESHEET_RE.replace_all(template_str, "").to_string()
     }
 }
 
@@ -191,14 +199,11 @@ impl<'a> CssInlineTransformer<'a> {
     ) -> bool {
         let mut found_replacement = false;
 
-        let link_tag_regex =
-            Regex::new(r#"<link[\s\S]*?rel\s*=\s*[\"']stylesheet[\"'][\s\S]*/?>"#).unwrap();
-
         for quasi in &mut template.quasis {
             let Some(cooked) = &quasi.value.cooked else {
                 continue;
             };
-            if !link_tag_regex.is_match(cooked) {
+            if !LINK_TAG_RE.is_match(cooked) {
                 continue;
             }
 
